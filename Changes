@@ -1,0 +1,6 @@
+Revision history for Perl extension Class-Comparable.
+
+0.01 Thu Oct  7 2004
+    - module created from older code (Comparable.pm)
+       - docs written
+       - tests written
