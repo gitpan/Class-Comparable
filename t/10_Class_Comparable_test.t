@@ -3,12 +3,59 @@
 use strict;
 use warnings;
 
-use Test::More 'no_plan';
+use Test::More tests => 57;
 
 BEGIN { 
     use_ok('Class::Comparable');
 }
 
+# test the code in the SYNOPSIS
+{
+    package Currency::USD;
+    
+    use base 'Class::Comparable';
+    
+    sub new { 
+        my $class = shift;
+        bless { value => shift }, $class;
+    }
+    
+    sub value { (shift)->{value} }
+    
+    sub compare {
+        my ($left, $right) = @_;
+        # if we are comparing against another
+        # currency object, then compare values
+        if (ref($right) && $right->isa('Currency::USD')) {
+            return $left->value <=> $right->value;
+        }
+        # otherwise assume we are comparing 
+        # against a numeric value of some kind
+        else {
+            return $left->value <=> $right;
+        }
+    }
+}
+  
+
+{  
+    my $buck_fifty = Currency::USD->new(1.50);
+    isa_ok($buck_fifty, 'Currency::USD');
+    
+    my $dollar_n_half = Currency::USD->new(1.50);
+    isa_ok($dollar_n_half, 'Currency::USD');
+    
+    ok($buck_fifty == $dollar_n_half, '... these are equal');
+    ok(1.75 > $buck_fifty, '... 1.75 is more than a buck fifty');    
+    
+    my $two_bits = Currency::USD->new(0.25);
+    isa_ok($two_bits, 'Currency::USD');
+    
+    ok($two_bits < $dollar_n_half, '... 2 bits is less than a dollar and a half');
+    ok($two_bits == 0.25, '... two bits is equal to 25 cents');
+}
+
+# now test the module as a whole ....
 
 {
     package Number;
@@ -72,10 +119,32 @@ can_ok("Number", 'new');
 
 }
 
-eval {
-    Class::Comparable->compare();
-};
-like($@, qr/Method Not Implemented/, '... this is an abstract method');
+{
+    package ReversalTest;
+    our @ISA = ('Class::Comparable');
+    
+    sub new { bless { num => $_[1] } => $_[0] }  
+    
+    sub compare {
+        my ($left, $right) = @_;
+        return ($left->{num} <=> $right);
+    }
+      
+}
+can_ok('ReversalTest', 'new');
+{
+    my $t = ReversalTest->new(5);
+    isa_ok($t, 'ReversalTest');
+    
+    ok((10 > $t), '... 10 is greater than 5');
+    ok((1  < $t), '... 1 is less than 5');        
+
+    ok(!(10 < $t), '... 10 is not less than 5');
+    ok(!(1  > $t), '... 1 is not greater than 5'); 
+      
+    cmp_ok((5 <=> $t), '==', 0, '... 5 is equal to 5');    
+          
+}
 
 {
     package String;
@@ -97,3 +166,10 @@ can_ok("String", 'new');
     ok($is->isExactly($is), '... is is exactly is');
     ok(!$is->isExactly($isnt), '... is is not exactly isnt');                     
 }
+
+# now check the error
+
+eval {
+    Class::Comparable->compare();
+};
+like($@, qr/Method Not Implemented/, '... this is an abstract method');

@@ -4,7 +4,7 @@ package Class::Comparable;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 # NOTE:
 # magnitude (<, <=, >=, >) is not the same as equality (==, !=)
@@ -17,14 +17,31 @@ our $VERSION = '0.01';
 use overload (
     '=='     => "equals",
     '!='     => "notEquals",
-    '<=>'    => "compare",
+    '<=>'    => "_compare",
     fallback => 1
     );
 
 # we do not supply a default here since very rarely 
-# would a default would not be appropriate. So unless
+# would a default be appropriate. So unless
 # this is overridden, an exception is thrown.
 sub compare { die "Method Not Implemented : no comparison method specified" }
+
+sub _compare {
+	my ($left, $right, $reversed) = @_;
+    my $r = $left->compare($right);
+    # if we are not reversed, then we 
+    # can return the unaltered result
+    return $r if not $reversed;
+    # however, if we *are* reversed, and
+    # the result is 0, we can return the
+    # unaltered 0 as well. 
+    return $r if $r == 0;
+    # now if we *are* reveresed, and we
+    # are not zero, then we need to negate 
+    # our value, which essentially reverses
+    # it so 1 becomes -1 and -1 becomes 1 
+    return -$r;
+}
 
 # equals is implemented in terms of compare
 sub equals {
@@ -86,53 +103,79 @@ __END__
 
 =head1 NAME
 
-Class::Comparable - A base class for Comparable objects
+Class::Comparable - A base class for comparable objects
 
 =head1 SYNOPSIS
-
-  package MyObject;
-  our @ISA = ('Class::Comparable');
-
-  # define your object as normal
-
-  # make sure to add a compare routine
-  # to be able to use all the features
-  # of Class::Comparable (see below)
-  sub compare {
-    my ($left, $right, $is_reversed) = @_;
-    # check for any reversals
-    ($left, $right) = ($right, $left) if $is_reversed;
-    # and then compare them
-    return $left->{some_value} <=> $right->{some_value};
+  
+  # an example subclass 
+  
+  package Currency::USD;
+  
+  use base 'Class::Comparable';
+  
+  sub new { 
+    my $class = shift;
+    bless { value => shift }, $class;
   }
-
+  
+  sub value { (shift)->{value} }
+  
+  sub compare {
+    my ($left, $right) = @_;
+    # if we are comparing against another
+    # currency object, then compare values
+    if (ref($right) && $right->isa('Currency::USD')) {
+        return $left->value <=> $right->value;
+    }
+    # otherwise assume we are comparing 
+    # against a numeric value of some kind
+    else {
+        return $left->value <=> $right;
+    }
+  }
+  
+  # an example usage of Class::Comparable object
+  
+  my $buck_fifty = Currency::USD->new(1.50);
+  my $dollar_n_half = Currenty::USD->new(1.50);
+  
+  ($buck_fifty == $dollar_n_half) # these are equal
+  (1.75 > $buck_fifty) # 1.75 is more than a buck fifty      
+  
+  my $two_bits = Currency::USD->new(0.25);
+  
+  ($two_bits < $dollar_n_half) # 2 bits is less than a dollar and a half
+  ($two_bits == 0.25) # two bits is equal to 25 cents
+  
 =head1 DESCRIPTION
+
+This module provides two things. First, it provides a base set of methods and overloaded operators for implementing objects which can be compared for equality (C<==> & C<!=>) and magnitude (C<E<lt>>, C<E<lt>=>, C<E<lt>=E<gt>>, C<=E<gt>> & C<E<gt>>). Second, it serves as a marker interface for objects which can be compared much like Java's Comparable interface.   
 
 =head1 METHODS
 
 =over 4
 
-=item B<compare ($compareTo, $is_reversed)>
+=item B<compare ($compare_to)>
 
-This method is abstract, and will throw an exception unless it is properly overridden by the class which implements Class::Comparable. 
+This method is abstract, and will throw an exception unless it is properly overridden by the class which implements Class::Comparable. This method is expected to return 1 if the invocant is greater than C<$compare_to>, 0 if they are equal to one another and -1 if the invocant is less than C<$compare_to>.
 
-At it's simplest, this method is expected to return 1 if the invocant is greater than C<$compareTo>, 0 if they are equal to one another and -1 if the invocant is less than C<$compareTo>. However, if the C<$is_reversed> argument is set to true (C<1>) then the order of the invocant and C<$compareTo> are reversed and should be compared appropriately (see the L<overload> docs for an explanation).
+B<NOTE:> This method used to have a second argument (C<$is_reversed>) which handled the odd cases where comparison arguments are reversed. This is now handled automatically, so you can simply compare your objects values in the order they are passed to C<compare>, and this class will handle the details. 
 
-=item B<equals ($compareTo)>
+=item B<equals ($compare_to)>
 
-Returns true (C<1>) if the invocant is equal to the C<$compareTo> argument (as determined by C<compare>) and return false (C<0>) otherwise.
+Returns true (C<1>) if the invocant is equal to the C<$compare_to> argument (as determined by C<compare>) and return false (C<0>) otherwise.
 
-=item B<notEquals ($compareTo)>
+=item B<notEquals ($compare_to)>
 
-Returns true (C<1>) if the invocant is not equal to the C<$compareTo> argument (as determined by C<equals>) and return false (C<0>) otherwise.
+Returns true (C<1>) if the invocant is not equal to the C<$compare_to> argument (as determined by C<equals>) and return false (C<0>) otherwise.
 
 =item B<isBetween ($left, $right)>
 
 Returns true (C<1>) if the invocant is greater than or equal to C<$left> and less than or equal to C<$right> (as determined by C<compare>) and return false (C<0>) otherwise. This method does not enforce the fact that C<$left> should be less than C<$right> so that it can allow for C<compare> to accept non-standard values. 
 
-=item B<isExactly ($compareTo)>
+=item B<isExactly ($compare_to)>
 
-Returns true (C<1>) if the invocant is exactly the same instance as C<$compareTo> and return false (C<0>) otherwise. This method will correctly handle objects who overload the C<""> (stringification) operator.
+Returns true (C<1>) if the invocant is exactly the same instance as C<$compare_to> and return false (C<0>) otherwise. This method will correctly handle objects who overload the C<""> (stringification) operator.
 
 =back
 
@@ -154,6 +197,18 @@ This operator is implemented by the C<compare> method. It should be noted that p
 
 =back
 
+=head1 IMPORTANT NOTE
+
+The C<compare> method now works correctly (and automatically) even if the values being compared are reversed. This usually only happens when an object is compared to another non-object (or another object which doesn't overload the C<E<lt>=E<gt>> operator). For instance, if the object is the left operand, like this:
+
+  ($obj < 5) # the $obj is less than 5
+  
+then the arguments to the C<compare> routine will be in the correct order. However if the object is the right operand, like this:
+
+  (5 > $obj) # 5 is greater than $obj
+  
+then the arguments to the C<compare> routine will be in the wrong order, meaning that our first argument is our right operand, and our second argument is our left operand. We take care of the details of reversing the output to make sure that the comparison returns the correct value. 
+
 =head1 BUGS
 
 None that I am aware of. Of course, if you find a bug, let me know, and I will be sure to fix it. 
@@ -172,7 +227,7 @@ I use B<Devel::Cover> to test the code coverage of my tests, below is the B<Deve
 
 =head1 SEE ALSO
 
-There are a number of comparison modules out there (search for 'Compare' at http://search.cpan.org), which can be used in conjunction with this module to help implement the C<compare> method for your class. 
+There are a number of comparison modules out there (L<http://search.cpan.org/search?query=Compare&mode=all>), many of which can be used in conjunction with this module to help implement the C<compare> method for your class. 
 
 =head1 AUTHOR
 
